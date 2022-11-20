@@ -1,90 +1,58 @@
-import numpy as np
 import json
+import numpy as np
+import pandas as pd
 
+def to_json(s):
+    js = json.loads(s)
+    s1 = []
+    for j in js:
+        if isinstance(j, list):
+            s1.append(j)
+        if isinstance(j, str):
+            a = []
+            a.append(j)
+            s1.append(a)
+    return s1
 
-def parse_str(s_data: str):
-    levels = json.loads(s_data)
-    args = sorted(
-        np.hstack(levels),
-        key=lambda e: int(e)
-    )
-    return levels, args
+def matrix_transpose(js):
+    groups_ranks = dict(enumerate(js))
+    objects = [item for sublist in js for item in sublist]
+    object_to_id = {v: k for k, v in dict(enumerate(objects)).items()}
+    matrix = np.zeros((len(objects), len(objects)))
+    prev_objects = []
+    for rank, group in groups_ranks.items():
+        ids = [object_to_id[x] for x in group]
+        self_ids = np.array(list(zip(ids, ids)))
+        matrix[self_ids[:, :, None], ids] = 1
+        matrix[np.array(prev_objects, dtype=np.int8)[:, None], ids] = 1
+        prev_objects.extend(ids)
 
+    result = pd.DataFrame(matrix, columns=object_to_id.keys(), index=object_to_id.keys())
+    result_t = result.transpose()
+    return result, result_t
 
-def construct_matrix(levels: list, args: list[str]):
-    size = len(args)
-    matrix = np.zeros((size, size))
-    passed = []
+def mult(df1, df2):
+    res = df1.copy()
+    for c in res.columns:
+        for i in res.index:
+            res[c][i] = df1[c][i] * df2[c][i]
+    return res
 
-    for level in levels:
-        if passed:
-            left = np.delete(args, passed)
-        else:
-            left = args
+def task(str1, str2):
+    j1 = to_json(str1)
+    j2 = to_json(str2)
 
-        if type(level) is list:
-            for elem in level:
-                arg = int(elem) - 1
-                for idx in left:
-                    matrix[arg, int(idx) - 1] = 1
-                passed.append(int(elem) - 1)
-        else:
-            elem = level
-            arg = int(elem) - 1
-            for idx in left:
-                matrix[arg, int(idx) - 1] = 1
-            passed.append(int(elem) - 1)
+    m1, m1_t = matrix_transpose(j1)
+    m2, m2_t = matrix_transpose(j2)
 
-    return np.matrix(matrix)
+    m12 = mult(m1, m2)
+    m12_t = mult(m1_t, m2_t)
 
-
-def merge_matrices(matrix_1: np.matrix, matrix_2: np.matrix):
-    return np.multiply(matrix_1, matrix_2) + np.multiply(matrix_1.T, matrix_2.T)
-
-
-def get_differences(matrix: np.matrix):
-    diff = np.array(np.where(matrix == 0)).T
-    upper_diff = np.array([d for d in diff if d[0] < d[1]]) + 1
-    return upper_diff
-
-
-def dumps_answer(array: np.array):
-    return json.dumps([[str(elem) for elem in pair.tolist()] for pair in array])
-
-
-def task(string_1: str, string_2: str):
-    levels_1, args_1 = parse_str(string_1)
-    levels_2, args_2 = parse_str(string_2)
-
-    matrix_a = construct_matrix(levels_1, args_1)
-    matrix_b = construct_matrix(levels_2, args_2)
-
-    merged_matrix = merge_matrices(matrix_A, matrix_B)
-
-    differences = get_differences(merged_matrix)
-
-    answer = dumps_answer(differences)
-
-    return answer
-
-
-if __name__ == "__main__":
-    range_A = '["1", ["2","3"],"4", ["5", "6", "7"], "8", "9", "10"]'
-    # range_B = '[["1","2"], ["3","4","5"], "6", "7", "9", ["8","10"]]'
-    range_B = '[["3","4"], ["1","2","5"], "7", "6", "9", ["8","10"]]'
-    # range_B = '["10","9","8","7","6","5","4","3","2","1"]'
-    # target_difference = '[["8","9"]]'
-
-    levels_A, args_A = parse_str(range_A)
-    levels_B, args_B = parse_str(range_B)
-
-    matrix_A = construct_matrix(levels_A, args_A)
-    matrix_B = construct_matrix(levels_B, args_B)
-
-    merged_matrix = merge_matrices(matrix_A, matrix_B)
-
-    differences = get_differences(merged_matrix)
-
-    answer = dumps_answer(differences)
-
-    print(answer)
+    result = m12.copy()
+    contr = []
+    for c in result.columns:
+        for i in result.index:
+            result[c][i] = m12[c][i] + m12_t[c][i]
+            if result[c][i] == 0.0 and [i, c] not in contr and [c, i] not in contr:
+                contr.append([c, i])
+    return contr
